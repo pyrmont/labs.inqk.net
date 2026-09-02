@@ -37,14 +37,25 @@ server {
         auth_basic "foobar";
         auth_basic_user_file /var/www/labs.inqk.net/auth/foobar;
 
-        add_header Set-Cookie "labs_foobar=0000000000000000000000000000000000000000000000000000000000000000; Path=/foobar/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax";
+        # Nothing is served or set here. `return` is handled in the rewrite
+        # phase, which runs before the access phase where auth_basic checks
+        # the password, so a redirect written here would fire without ever
+        # asking for one. try_files runs in a phase after access, and its
+        # fallback is an internal redirect, so the named location below is
+        # reached only by a request that has already answered the prompt.
+        # The first argument is a path that must not exist, so the fallback
+        # is always what runs.
+        try_files /nonexistent @foobar_unlocked;
+    }
 
-        # The index is served here rather than redirected to. `return` is
-        # handled in the rewrite phase, which runs before the access phase
-        # where auth_basic checks the password, so a redirect would fire
-        # without ever asking. A relative link resolves against /foobar/ from
-        # this URL just as it does from the index's own, so the page works.
-        try_files /foobar/index.html =404;
+    # Reached only from the location above, and only once the password has
+    # been accepted. The cookie is set here rather than there because
+    # add_header applies at the level where the response is generated, which
+    # after an internal redirect is this one; a Set-Cookie left behind in the
+    # location above would be dropped without a word.
+    location @foobar_unlocked {
+        add_header Set-Cookie "labs_foobar=0000000000000000000000000000000000000000000000000000000000000000; Path=/foobar/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax";
+        return 302 /foobar/;
     }
 
     # The ^~ is load-bearing. Without it a request for a .css or .png inside
