@@ -18,14 +18,39 @@ To protect a new experiment, for each one:
 
         $ openssl rand -hex 32
         $ mkdir -p /var/www/labs.inqk.net/auth
-        $ htpasswd -c /var/www/labs.inqk.net/auth/<name> <user>
+        $ printf '<user>:%s\n' "$(openssl passwd -apr1)" > /var/www/labs.inqk.net/auth/<name>
 
-2. Copy the `map` block and the two `location` blocks for `foobar` in
+2. Copy the `map` block and the three `location` blocks for `foobar` in
    `nginx.conf.example`, replacing the name and pasting the secret into both
-   the map and the `Set-Cookie`.
+   the map and the `Set-Cookie`, which lives in the named location rather
+   than in the one that asks for the password.
 
 Then visit `https://labs.inqk.net/<name>/unlock` once. Every page under
 `/<name>/` loads without a prompt from then on, on that browser.
+
+### Adding and removing users
+
+An auth file is one `user:hash` line per person. Append to add someone to an
+experiment that already has a file, or the `>` above will throw away everyone
+already in it:
+
+    $ printf '<user>:%s\n' "$(openssl passwd -apr1)" >> /var/www/labs.inqk.net/auth/<name>
+
+nginx reads the file from the top and stops at the first line whose name
+matches, so a second line for a name already present is never reached.
+Changing a password means deleting the old line first:
+
+    $ sed -i '/^<user>:/d' /var/www/labs.inqk.net/auth/<name>
+
+Deleting the line alone removes a user. None of this needs a reload: the file
+is read on each request that needs it, which is also why it wants to stay
+small and world-readable. What a plain `>` leaves it as depends on the umask
+-- 664 on the server as it stands -- and any of those are fine so long as the
+world-read bit survives: nginx runs as `nginx`, and a file it cannot read is a
+500 on the unlock URL rather than a prompt.
+
+Removing a user shuts nobody out, though. The password is asked for only at
+the unlock URL, so anyone already holding a cookie keeps it.
 
 Two things this depends on:
 
