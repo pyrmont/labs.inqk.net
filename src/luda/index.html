@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>luda</title>
+<style>
+:root {
+  --measure: 44rem;
+  --gutter: 1.5rem;
+  --bg: #fdfcfa;
+  --fg: #22201d;
+  --muted: #6b665f;
+  --rule: #ddd8d0;
+  --link: #1a4f8a;
+  --note-bg: #fffdf5;
+  --note-edge: #c9bf9f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17161a;
+    --fg: #e4e0d9;
+    --muted: #9a948b;
+    --rule: #35323a;
+    --link: #8fbcf0;
+    --note-bg: #23212a;
+    --note-edge: #4a4553;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+  font-size: 1.125rem;
+  line-height: 1.7;
+  margin: 0;
+  padding: 0 var(--gutter) 6rem;
+  -webkit-text-size-adjust: 100%;
+}
+
+.wrap { max-width: var(--measure); margin: 0 auto; }
+
+.bar {
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+  font-family: system-ui, sans-serif;
+  font-size: .8rem;
+  margin-bottom: 2.5rem;
+  padding: 1rem 0;
+}
+.bar a { color: var(--muted); }
+
+h1.title { font-size: 1.9rem; font-weight: 600; line-height: 1.25; margin: 0 0 2.5rem; }
+
+article p, article li { overflow-wrap: break-word; }
+article h2, article h3, article h4 {
+  font-size: 1.25rem; font-weight: 600; line-height: 1.3; margin: 2.5rem 0 1rem;
+}
+article a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+article blockquote {
+  border-left: 3px solid var(--rule); color: var(--muted);
+  margin: 1.5rem 0; padding: 0 0 0 1.2rem;
+}
+article hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+article code, article pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: .85em;
+}
+article pre {
+  background: rgba(128,128,128,.1); border-radius: 4px;
+  overflow-x: auto; padding: .8rem 1rem; white-space: pre;
+}
+article img, article video { height: auto; max-width: 100%; }
+article sup a { text-decoration: none; }
+
+/* Wide tables escape the measure but never the viewport. */
+.scroll { -webkit-overflow-scrolling: touch; margin: 1.5rem 0; overflow-x: auto; }
+.scroll table {
+  background: #fff; border-collapse: collapse; color: #000;
+  font-family: system-ui, sans-serif; font-size: .8rem; margin: 0 auto;
+}
+.scroll th, .scroll td { border: 1px solid #999; padding: .25rem .5rem; text-align: center; }
+.scroll td.l { text-align: left; }
+
+nav.prevnext {
+  border-top: 1px solid var(--rule);
+  display: flex; flex-flow: row wrap; gap: 1rem; justify-content: space-between;
+  font-size: .9rem; font-style: italic; margin-top: 4rem; padding-top: 1.5rem;
+}
+nav.prevnext a { color: var(--link); }
+
+/* ---- notes, with no JavaScript --------------------------------------
+   Each <abbr title> becomes: a hidden checkbox, an inline <label> holding
+   the original text, the note panel, and a full-viewport scrim label.
+   The label is a normal inline box, so a passage running over several
+   lines still wraps and stays underlined line by line. */
+
+.note-toggle {
+  position: absolute; height: 1px; width: 1px; margin: 0; opacity: 0;
+}
+
+.note-trigger {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  -webkit-tap-highlight-color: transparent;
+}
+.note-trigger:hover { background: rgba(140,120,60,.16); text-decoration-style: solid; }
+.note-toggle:checked + .note-trigger {
+  background: rgba(140,120,60,.28); text-decoration-style: solid;
+}
+.note-toggle:focus-visible + .note-trigger { outline: 2px solid var(--link); outline-offset: 2px; }
+
+.note-panel, .note-scrim { display: none; }
+
+/* The scrim sits under the panel, so a press inside the panel does nothing
+   and only a press outside it dismisses. */
+.note-toggle:checked + .note-trigger + .note-panel + .note-scrim {
+  display: block; position: fixed; inset: 0; z-index: 5; cursor: default;
+}
+.note-toggle:checked + .note-trigger + .note-panel {
+  background: var(--note-bg);
+  border-top: 1px solid var(--note-edge);
+  bottom: 0;
+  box-shadow: 0 -6px 28px -8px rgba(0,0,0,.35);
+  /* a column of two parts: a header that stays put and a body that scrolls */
+  display: flex;
+  flex-direction: column;
+  font-size: 1rem;
+  left: 0;
+  line-height: 1.55;
+  /* vh is the large viewport on iOS, measured with the toolbars hidden, so a
+     panel sized in vh takes more of the screen than it appears to and can
+     leave no scrim to press. dvh tracks what is actually visible. */
+  max-height: 50vh;
+  max-height: 50dvh;
+  overflow: hidden;
+  padding: 0;
+  position: fixed;
+  right: 0;
+  z-index: 6;
+}
+
+/* Hold the page still while a note is open. :has lets the state of a checkbox
+   deep in the article reach the root, with no script involved. */
+html:has(.note-toggle:checked),
+body:has(.note-toggle:checked) {
+  overflow: hidden;
+}
+
+/* A long note can fill the panel, so dismissing must never depend on there
+   being a scrim left to press. */
+.note-close {
+  align-self: center;
+  color: var(--muted);
+  cursor: pointer;
+  flex: none;
+  font-family: system-ui, sans-serif;
+  font-size: .72rem;
+  letter-spacing: .06em;
+  max-width: var(--measure);
+  padding: 1rem var(--gutter) .7rem;
+  text-align: right;
+  text-transform: uppercase;
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.note-toggle:focus-visible + .note-trigger + .note-panel .note-close {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+.note-toggle:checked + .note-trigger + .note-panel > span {
+  align-self: center;
+  display: block;
+  flex: 1 1 auto;
+  max-width: var(--measure);
+  overflow-y: auto;
+  /* without this a drag that reaches the end keeps going and scrolls the
+     article behind the panel */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--gutter) calc(1.25rem + env(safe-area-inset-bottom));
+  width: 100%;
+  /* A shadow at an edge only while there is more text past it. The cover
+     layers scroll with the content (local) and the shadow layers do not
+     (scroll), so each shadow is hidden until that end is out of view. He does
+     not end a note with a full stop, so without this there is no way to tell
+     a note has been read to the end. */
+  background:
+    linear-gradient(var(--note-bg) 30%, rgba(0,0,0,0)) top / 100% 1.4rem no-repeat local,
+    linear-gradient(rgba(0,0,0,0), var(--note-bg) 70%) bottom / 100% 1.4rem no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgba(0,0,0,.18), rgba(0,0,0,0))
+      top / 100% .45rem no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,.18), rgba(0,0,0,0))
+      bottom / 100% .45rem no-repeat scroll;
+}
+
+/* ---- the archive index ---------------------------------------------- */
+
+h2.section {
+  border-top: 1px solid var(--rule);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 3rem 0 1.5rem;
+  padding-top: 1.5rem;
+}
+
+ul.archive { list-style: none; margin: 0; padding: 0; }
+
+ul.archive li {
+  display: flex;
+  flex-flow: row wrap;
+  gap: 0 .7rem;
+  line-height: 1.45;
+  margin-bottom: .7rem;
+}
+
+ul.archive .date {
+  color: var(--muted);
+  flex: 0 0 3.2em;
+  font-family: system-ui, sans-serif;
+  font-size: .85rem;
+  font-variant-numeric: tabular-nums;
+  padding-top: .15rem;
+}
+
+ul.archive a { color: var(--link); flex: 1 1 12rem; }
+
+ul.archive .offsite {
+  color: var(--muted);
+  font-family: system-ui, sans-serif;
+  font-size: .7rem;
+  padding-top: .3rem;
+  text-transform: uppercase;
+}
+
+/* ---- jumping to a footnote ------------------------------------------ */
+
+/* Following a footnote link puts the target's top at the top of the layout
+   viewport. Safari then expands its toolbar over the visual viewport, which
+   covers the first line or two of what was just jumped to. Reserving space
+   above every target leaves the start of a footnote in clear view. */
+article [id] { scroll-margin-top: 4rem; }
+
+/* Show where the jump landed, which matters most for a footnote sitting in a
+   list of other footnotes. */
+article [id]:target {
+  background: rgba(140,120,60,.16);
+  border-radius: 3px;
+  box-shadow: 0 0 0 .35rem rgba(140,120,60,.16);
+}
+
+/* The footnotes read as a block apart from the article. */
+article .footnotes { font-size: .95rem; margin-top: 3rem; }
+article .footnotes ol { padding-left: 1.4rem; }
+article .footnotes li { margin-bottom: .9rem; }
+article .footnote-return { text-decoration: none; }
+
+/* ---- the form -------------------------------------------------------
+   Everything above this line is a copy of tools/assets/style.css, which
+   the static mirror uses. Keep the two in step. */
+
+form.ask { display: flex; flex-flow: row wrap; gap: .5rem; margin: 0; }
+
+form.ask input {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: var(--fg);
+  flex: 1 1 18rem;
+  font: inherit;
+  font-family: system-ui, sans-serif;
+  font-size: .9rem;
+  min-width: 0;
+  padding: .45rem .6rem;
+}
+form.ask input:focus-visible { border-color: var(--link); outline: 1px solid var(--link); }
+
+form.ask button {
+  background: var(--link);
+  border: 1px solid var(--link);
+  border-radius: 4px;
+  color: var(--bg);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: system-ui, sans-serif;
+  font-size: .9rem;
+  padding: .45rem 1.1rem;
+}
+
+.hint { margin: .7rem 0 0; }
+.hint a { color: var(--muted); }
+
+.msg { margin: 3rem 0; }
+.msg strong { color: var(--fg); display: block; font-weight: 600; margin-bottom: .4rem; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="bar">
+    <form class="ask" action="" method="get">
+      <input type="url" name="url" id="url" required spellcheck="false"
+             autocapitalize="off" autocorrect="off"
+             aria-label="Address of a page on danluu.com"
+             placeholder="https://danluu.com/slow-device/">
+      <button type="submit">Read</button>
+    </form>
+    <p class="hint" id="hint">
+      Paste the address of a danluu.com page.
+      <a href="?url=https%3A%2F%2Fdanluu.com%2F">Browse the archive</a>.
+    </p>
+  </div>
+</div>
+
+<div id="out"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var ORIGIN = 'https://danluu.com';
+
+  var out = document.getElementById('out');
+  var hint = document.getElementById('hint');
+  var field = document.getElementById('url');
+
+  /* ---- URLs --------------------------------------------------------- */
+
+  /* Accepts what a person would actually type: a bare host, a slug with no
+     trailing slash, http where the site speaks https. */
+  function normalise(raw) {
+    var s = String(raw || '').trim();
+    if (!s) throw new Error('Enter the address of a page on danluu.com.');
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = 'https://' + s.replace(/^\/+/, '');
+    var u;
+    try { u = new URL(s); } catch (e) {
+      throw new Error('That is not an address this can read.');
+    }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+      throw new Error('That is not an address this can read.');
+    }
+    u.protocol = 'https:';
+    if (u.hostname === 'www.danluu.com') u.hostname = 'danluu.com';
+    if (u.hostname !== 'danluu.com') {
+      throw new Error('This reads danluu.com only, and that address is on ' +
+                      u.hostname + '.');
+    }
+    /* an article is a directory, so a slug typed without its slash is one */
+    if (!/\/$/.test(u.pathname) && !/\.[a-z0-9]+$/i.test(u.pathname)) {
+      u.pathname += '/';
+    }
+    u.hash = '';
+    return u;
+  }
+
+  /* The slug where `u` names an article, else null. An article lives at a
+     single path segment ending in a slash, which is what separates one from
+     an asset like /substack.mp4. */
+  function slugOf(u) {
+    if (u.origin !== ORIGIN) return null;
+    var rest = u.pathname.replace(/^\//, '');
+    if (!rest || rest.charAt(rest.length - 1) !== '/') return null;
+    if (rest.slice(0, -1).indexOf('/') !== -1) return null;
+    return rest.slice(0, -1);
+  }
+
+  function isArchive(u) {
+    return u.origin === ORIGIN && u.pathname === '/';
+  }
+
+  /* A link back into this reader, relative so the page works wherever it is
+     mounted. */
+  function readerHref(href) {
+    return '?url=' + encodeURIComponent(href);
+  }
+
+  /* ---- rewriting ----------------------------------------------------
+     The fetched markup is someone else's and is injected into this page, so
+     anything that could execute comes out and every URL is resolved and
+     checked before it is kept. */
+
+  var DROP = {
+    SCRIPT: 1, STYLE: 1, LINK: 1, META: 1, BASE: 1, TITLE: 1, NOSCRIPT: 1,
+    TEMPLATE: 1, IFRAME: 1, FRAME: 1, FRAMESET: 1, OBJECT: 1, EMBED: 1,
+    APPLET: 1, FORM: 1, INPUT: 1, BUTTON: 1, TEXTAREA: 1, SELECT: 1
+  };
+
+  var SAFE_SCHEME = /^(https?:|mailto:)/i;
+
+  function fixUrlAttr(el, name, base) {
+    var v = el.getAttribute(name);
+    if (v === null) return;
+    v = v.trim();
+    if (v.charAt(0) === '#') return;  /* addresses this page */
+    var abs;
+    try { abs = new URL(v, base).href; } catch (e) { el.removeAttribute(name); return; }
+    if (!SAFE_SCHEME.test(abs)) { el.removeAttribute(name); return; }
+    el.setAttribute(name, abs);
+  }
+
+  /* Each <abbr title> becomes the four siblings the stylesheet reveals with
+     `:checked ~`, so their order matters. The trigger is a label rather than
+     a button because a button is an atomic inline box and cannot break
+     across lines, which would collapse a multi-line passage into one block.
+     The title is set as text, never as markup. */
+  function expandNote(el, state) {
+    var title = el.getAttribute('title');
+    if (!title) {
+      /* an abbr with no title carries no note, so the dotted underline it
+         would draw promises something that is not there */
+      el.replaceWith.apply(el, Array.prototype.slice.call(el.childNodes));
+      return;
+    }
+
+    state.notes += 1;
+    var id = 'n' + state.notes;
+
+    var toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.id = id;
+    toggle.className = 'note-toggle';
+
+    var trigger = document.createElement('label');
+    trigger.setAttribute('for', id);
+    trigger.className = 'note-trigger';
+    while (el.firstChild) trigger.appendChild(el.firstChild);
+
+    var close = document.createElement('label');
+    close.setAttribute('for', id);
+    close.className = 'note-close';
+    close.textContent = 'Close';
+
+    var body = document.createElement('span');
+    body.textContent = title;
+
+    var panel = document.createElement('span');
+    panel.className = 'note-panel';
+    panel.appendChild(close);
+    panel.appendChild(body);
+
+    var scrim = document.createElement('label');
+    scrim.setAttribute('for', id);
+    scrim.className = 'note-scrim';
+
+    var box = document.createDocumentFragment();
+    box.appendChild(toggle);
+    box.appendChild(trigger);
+    box.appendChild(panel);
+    box.appendChild(scrim);
+    el.replaceWith(box);
+  }
+
+  function clean(root, base, state) {
+    var kids = Array.prototype.slice.call(root.childNodes);
+    for (var i = 0; i < kids.length; i++) {
+      var n = kids[i];
+
+      if (n.nodeType === 8) { n.remove(); continue; }  /* comment */
+      if (n.nodeType !== 1) continue;                  /* text */
+
+      var tag = n.tagName;
+      if (DROP[tag]) { n.remove(); continue; }
+
+      var attrs = Array.prototype.slice.call(n.attributes);
+      for (var j = 0; j < attrs.length; j++) {
+        if (/^on/i.test(attrs[j].name)) n.removeAttribute(attrs[j].name);
+      }
+      if (n.hasAttribute('href')) fixUrlAttr(n, 'href', base);
+      if (n.hasAttribute('src')) fixUrlAttr(n, 'src', base);
+      if (n.hasAttribute('srcset')) n.removeAttribute('srcset');
+
+      /* a link to another page on the site is read here rather than there */
+      if (tag === 'A') {
+        var h = n.getAttribute('href');
+        if (h && h.charAt(0) !== '#') {
+          try {
+            var u = new URL(h);
+            if (slugOf(u) || isArchive(u)) n.setAttribute('href', readerHref(u.href));
+          } catch (e) { /* left as it is */ }
+        }
+      }
+
+      clean(n, base, state);
+
+      if (tag === 'ABBR') { expandNote(n, state); continue; }
+
+      /* a table is far wider than a comfortable measure, so it scrolls in a
+         box of its own rather than widening the column */
+      if (tag === 'TABLE') {
+        var scroll = document.createElement('div');
+        scroll.className = 'scroll';
+        n.replaceWith(scroll);
+        scroll.appendChild(n);
+      }
+    }
+  }
+
+  /* ---- pages -------------------------------------------------------- */
+
+  function wrapper() {
+    var wrap = document.createElement('div');
+    wrap.className = 'wrap';
+    return wrap;
+  }
+
+  function show(node, title) {
+    out.replaceChildren(node);
+    document.title = title ? title + ' — luda' : 'luda';
+    window.scrollTo(0, 0);
+  }
+
+  function source(url) {
+    var p = document.createElement('p');
+    p.className = 'hint';
+    p.appendChild(document.createTextNode('Source: '));
+    var a = document.createElement('a');
+    a.href = url;
+    a.textContent = url;
+    a.rel = 'noreferrer';
+    p.appendChild(a);
+    hint.replaceWith(p);
+    hint = p;
+  }
+
+  function message(head, detail) {
+    var wrap = wrapper();
+    var p = document.createElement('p');
+    p.className = 'msg';
+    var b = document.createElement('strong');
+    b.textContent = head;
+    p.appendChild(b);
+    if (detail) p.appendChild(document.createTextNode(detail));
+    wrap.appendChild(p);
+    show(wrap, head);
+  }
+
+  function renderArticle(doc, url) {
+    var state = { notes: 0 };
+    var main = doc.querySelector('main');
+    var nav = main ? doc.querySelector('nav') : null;
+    if (!main) main = doc.body;
+
+    var titleEl = doc.querySelector('title');
+    var title = titleEl ? titleEl.textContent.trim() : url;
+
+    clean(main, url, state);
+    if (nav) clean(nav, url, state);
+
+    var wrap = wrapper();
+
+    var h1 = document.createElement('h1');
+    h1.className = 'title';
+    h1.textContent = title;
+    wrap.appendChild(h1);
+
+    var article = document.createElement('article');
+    while (main.firstChild) article.appendChild(main.firstChild);
+    wrap.appendChild(article);
+
+    if (nav && nav.firstChild) {
+      var pn = document.createElement('nav');
+      pn.className = 'prevnext';
+      /* the site wraps the pair in a div, which would make them one flex
+         item and leave nothing for space-between to push apart */
+      var inner = nav.querySelector('div.np') || nav;
+      while (inner.firstChild) pn.appendChild(inner.firstChild);
+      if (pn.firstChild) wrap.appendChild(pn);
+    }
+
+    show(wrap, title);
+    if (location.hash) {
+      var target = document.getElementById(location.hash.slice(1));
+      if (target) target.scrollIntoView();
+    }
+  }
+
+  function renderArchive(doc) {
+    var onSite = document.createElement('ul');
+    onSite.className = 'archive';
+    var offSite = document.createElement('ul');
+    offSite.className = 'archive';
+
+    var list = doc.querySelector('ul');
+    var items = list ? list.children : [];
+
+    for (var i = 0; i < items.length; i++) {
+      var li = items[i];
+      if (li.tagName !== 'LI') continue;
+
+      var link = li.querySelector('a');
+      if (!link) continue;
+      var href = (link.getAttribute('href') || '').trim();
+      /* the first entry links to the Patreon section of the page itself */
+      if (!href || href.charAt(0) === '#') continue;
+
+      var u;
+      try { u = new URL(href, ORIGIN + '/'); } catch (e) { continue; }
+      if (!SAFE_SCHEME.test(u.href)) continue;
+
+      var dateEl = li.querySelector('d');
+      var mirrored = !!slugOf(u);
+
+      var row = document.createElement('li');
+
+      var date = document.createElement('span');
+      date.className = 'date';
+      date.textContent = dateEl ? dateEl.textContent : '';
+      row.appendChild(date);
+
+      var a = document.createElement('a');
+      a.href = mirrored ? readerHref(u.href) : u.href;
+      a.textContent = link.textContent;
+      if (!mirrored) a.rel = 'noreferrer';
+      row.appendChild(a);
+
+      if (!mirrored) {
+        var mark = document.createElement('span');
+        mark.className = 'offsite';
+        mark.textContent = 'offsite';
+        row.appendChild(mark);
+      }
+
+      (mirrored ? onSite : offSite).appendChild(row);
+    }
+
+    var wrap = wrapper();
+
+    var h1 = document.createElement('h1');
+    h1.className = 'title';
+    h1.textContent = 'danluu.com';
+    wrap.appendChild(h1);
+    wrap.appendChild(onSite);
+
+    if (offSite.children.length) {
+      var h2 = document.createElement('h2');
+      h2.className = 'section';
+      h2.textContent = 'Published elsewhere';
+      wrap.appendChild(h2);
+      wrap.appendChild(offSite);
+    }
+
+    show(wrap, 'danluu.com');
+  }
+
+  /* ---- loading ------------------------------------------------------ */
+
+  function load(raw) {
+    var u;
+    try { u = normalise(raw); } catch (e) {
+      message('That address will not do.', e.message);
+      return;
+    }
+
+    field.value = u.href;
+    message('Fetching…', u.href);
+
+    fetch(u.href, { credentials: 'omit', redirect: 'follow' })
+      .then(function (res) {
+        if (!res.ok) throw new Error(u.href + ' returned ' + res.status + '.');
+        return res.text();
+      })
+      .then(function (text) {
+        var doc = new DOMParser().parseFromString(text, 'text/html');
+        source(u.href);
+        if (isArchive(u)) renderArchive(doc);
+        else renderArticle(doc, u.href);
+      })
+      .catch(function (e) {
+        /* fetch rejects with a TypeError for a network failure and for a
+           blocked cross-origin read alike, and tells the page nothing about
+           which it was */
+        if (e instanceof TypeError) {
+          message('That page could not be fetched.',
+                  'The site was unreachable, or it stopped allowing other ' +
+                  'sites to read it. danluu.com sends ' +
+                  'Access-Control-Allow-Origin: * today, which is what lets ' +
+                  'this work at all.');
+        } else {
+          message('That page could not be fetched.', e.message);
+        }
+      });
+  }
+
+  /* A note is dismissed by the scrim or the Close label with no script at
+     all. Escape is the one thing the stylesheet cannot offer. */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var open = document.querySelectorAll('.note-toggle:checked');
+    for (var i = 0; i < open.length; i++) open[i].checked = false;
+  });
+
+  var asked = new URLSearchParams(location.search).get('url');
+  if (asked) load(asked);
+  else field.focus();
+})();
+</script>
+
+</body>
+</html>
