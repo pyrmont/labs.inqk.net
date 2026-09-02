@@ -1,6 +1,14 @@
 # Each experiment is opened by its own cookie. The value is a shared secret
 # generated with `openssl rand -hex 32`. A map runs in the http context, so it
 # sits above the server blocks.
+
+# The cookie value is 64 characters, and a map hash bucket must hold the
+# whole entry: the key plus a pointer and its alignment padding. The default
+# is the cache line size, which is 64 on most machines, so the default is one
+# short and nginx refuses to start with "could not build map_hash". This is
+# set once, not per experiment.
+map_hash_bucket_size 128;
+
 map $cookie_labs_foobar $labs_foobar_denied {
     default                                                            1;
     "0000000000000000000000000000000000000000000000000000000000000000" 0;
