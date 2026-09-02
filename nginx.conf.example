@@ -1,3 +1,11 @@
+# Each experiment is opened by its own cookie. The value is a shared secret
+# generated with `openssl rand -hex 32`. A map runs in the http context, so it
+# sits above the server blocks.
+map $cookie_labs_foobar $labs_foobar_denied {
+    default                                                            1;
+    "0000000000000000000000000000000000000000000000000000000000000000" 0;
+}
+
 server {
     server_name labs.inqk.net;
     root /var/www/labs.inqk.net/public;
@@ -9,6 +17,45 @@ server {
     # without an index.html returns 404 rather than a 403 from autoindex.
     location / {
         index index.html =404;
+    }
+
+    # ---- foobar -------------------------------------------------------
+    #
+    # Visited once. The password is asked for here and nowhere else, and the
+    # answer is a cookie that lasts a year. An exact-match location outranks
+    # every prefix and regex location, so this stays reachable while the
+    # directory around it is shut.
+    location = /foobar/unlock {
+        auth_basic "foobar";
+        auth_basic_user_file /var/www/labs.inqk.net/auth/foobar;
+
+        add_header Set-Cookie "labs_foobar=0000000000000000000000000000000000000000000000000000000000000000; Path=/foobar/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax";
+
+        # The index is served here rather than redirected to. `return` is
+        # handled in the rewrite phase, which runs before the access phase
+        # where auth_basic checks the password, so a redirect would fire
+        # without ever asking. A relative link resolves against /foobar/ from
+        # this URL just as it does from the index's own, so the page works.
+        try_files /foobar/index.html =404;
+    }
+
+    # The ^~ is load-bearing. Without it a request for a .css or .png inside
+    # the experiment would match the regex location further down, which has no
+    # cookie check, and would be served to anyone who asked.
+    location ^~ /foobar/ {
+        if ($labs_foobar_denied) {
+            return 302 /foobar/unlock;
+        }
+
+        index index.html =404;
+
+        # ^~ skips the regex locations below, so the rule that matters inside
+        # a protected directory is repeated here.
+        location ~ /\. {
+            access_log off;
+            log_not_found off;
+            deny all;
+        }
     }
 
     # Directives to send expires headers and turn off 404 error logging.
@@ -23,9 +70,19 @@ server {
         log_not_found off;
         deny all;
     }
+
+    listen 443 ssl;
+    ssl_certificate     /etc/lego/certificates/inqk.net.crt;
+    ssl_certificate_key /etc/lego/certificates/inqk.net.key;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
 }
 
 server {
-    server_name labs.inqk.net;
     listen 80;
+    server_name labs.inqk.net;
+    return 301 https://$host$request_uri;
 }
